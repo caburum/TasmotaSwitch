@@ -6,6 +6,7 @@
 #include <ESP8266WiFi.h>
 #include <WiFiClient.h>
 
+#include "StatusLight.hpp"
 #include "secrets.h"
 
 typedef enum {
@@ -22,6 +23,10 @@ namespace Network {
 		if (WiFi.status() != WL_CONNECTED) {
 			WiFi.mode(WIFI_STA);
 			WiFi.begin(WIFI_SSID, WIFI_PASSPHRASE);
+			WiFi.persistent(true);
+			WiFi.setHostname("tasmota-switch");
+			WiFi.setAutoReconnect(true);
+
 			Serial.print("wifi connecting");
 			int connectionAttempts = 0;
 			while (WiFi.status() != WL_CONNECTED) {

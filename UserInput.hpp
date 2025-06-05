@@ -17,16 +17,18 @@
 namespace UserInput {
 	volatile bool toggleScheduledFlag = false;
 	volatile int32_t dimmerDelta = 0;
+	volatile unsigned long lastInteractionTime = millis();
 
 	IRAM_ATTR void toggleButtonInterrupt() {
 		// https://forum.arduino.cc/t/45110
 		static unsigned long lastTime = 0;
 		unsigned long currentTime = millis();
+		lastInteractionTime = millis();
 		// if interrupts come faster than 200ms, assume it's a bounce and ignore
 		if (currentTime - lastTime > 200) {
 			toggleScheduledFlag = true; // will be unset by main loop
 			Serial.println("toggleScheduledFlag: true");
-			StatusLight::setColor(true, true, false); // yellow
+			StatusLight::setColor(false, false, true);
 		}
 		lastTime = currentTime;
 	}
@@ -40,6 +42,7 @@ namespace UserInput {
 		static const int8_t encStates[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0}; // lookup table
 		static unsigned long lastTime = 0;
 		unsigned long currentTime = millis();
+		lastInteractionTime = millis();
 
 		oldAB <<= 2; // Remember previous state
 
@@ -73,7 +76,7 @@ namespace UserInput {
 			return; // skip dealing with value
 		}
 
-		StatusLight::setColor(true, true, false); // yellow
+		StatusLight::setColor(false, false, true);
 
 		dimmerDelta = constrain(dimmerDelta, -100, 100); // todo: fix overflow
 
@@ -89,24 +92,6 @@ namespace UserInput {
 		attachInterrupt(digitalPinToInterrupt(PIN_SW), toggleButtonInterrupt, RISING);
 		attachInterrupt(digitalPinToInterrupt(PIN_CLK), updateEncoderInterrupt, CHANGE);
 		attachInterrupt(digitalPinToInterrupt(PIN_DT), updateEncoderInterrupt, CHANGE);
-	}
-
-	inline void loop() {
-		if (toggleScheduledFlag) {
-			toggleScheduledFlag = false;
-			networkBooleanResult_t toggleStatus = Network::power2(true);
-			if (toggleStatus == NETWORK_ON) {
-				StatusLight::setColor(false, true, true); // cyan
-			} else if (toggleStatus == NETWORK_OFF) {
-				StatusLight::setColor(true, false, true); // magenta
-			} else {
-				StatusLight::setColor(true, false, false); // red
-			}
-		}
-
-		if (dimmerDelta != 0) {
-			Network::sendCmnd(("dimmer2+%2B" + String(dimmerDelta)).c_str());
-		}
 	}
 }
 

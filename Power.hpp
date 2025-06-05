@@ -64,12 +64,23 @@ namespace Power {
 		// light sleep function requires microseconds
 		wifi_fpm_do_sleep(sleepTime_ms * 1000);
 
-		esp_delay(sleepTime_ms + 1, []() { return sleeping; });
+		esp_delay(sleepTime_ms + 1, []() {
+			ESP.wdtFeed();
+			return sleeping;
+		});
 	}
 
 	// light sleep forever until hardware interrupt
 	void lightSleep() {
 		lightSleep(0xFFFFFFF);
+	}
+
+	void delay(unsigned long ms) {
+		unsigned long startMillis = millis();
+		while (millis() - startMillis < ms) {
+			ESP.wdtFeed();
+			optimistic_yield(10e3);
+		}
 	}
 }
 

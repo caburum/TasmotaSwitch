@@ -1,10 +1,13 @@
 #include "Network.hpp"
 #include "Power.hpp"
 #include "StatusLight.hpp"
+#include "Storage.hpp"
 #include "UserInput.hpp"
 
 // #define PIN_PHOTORESISTOR A0
 #define ECO_MODE false // disconnects & sleeps when inactive, tradeoff for responsiveness
+
+bool clearLight = false;
 
 void setup() {
 	Serial.begin(115200);
@@ -13,30 +16,58 @@ void setup() {
 	Storage::setup();
 	UserInput::setup();
 	StatusLight::setup();
+	StatusLight::setColor(0x111100);
+
 	if (!ECO_MODE) Network::connectWifi();
-	StatusLight::setColor(true, true, false);
+
+	StatusLight::setColor(0x002200);
+	clearLight = true;
 }
 
 void loop() {
 	// Serial.println("running");
 
-	// Power::delay(1000);
+	UserInput::loop();
 
-	if (UserInput::toggleScheduledFlag) {
-		StatusLight::setColor(false, false, false);
-		UserInput::toggleScheduledFlag = false;
-		networkBooleanResult_t toggleStatus = Network::power2(true);
-		if (toggleStatus == NETWORK_ON) {
-			StatusLight::setColor(false, true, true); // cyan
-		} else if (toggleStatus == NETWORK_OFF) {
-			StatusLight::setColor(true, false, true); // magenta
-		} else {
-			StatusLight::setColor(true, false, false); // red
+	switch (UserInput::buttonPress) {
+		case UserInput::ButtonPress::PRESS_SHORT: {
+			networkBooleanResult_t toggleStatus = Network::power('2', Network::PowerState::TOGGLE);
+			// if (toggleStatus == NETWORK_ON) {
+			// 	StatusLight::setColor(false, true, true); // cyan
+			// } else if (toggleStatus == NETWORK_OFF) {
+			// 	StatusLight::setColor(true, false, true); // magenta
+			// } else {
+			// 	StatusLight::setColor(true, false, false); // red
+			// }
+
+			break;
 		}
+
+		case UserInput::ButtonPress::PRESS_MEDIUM: {
+			networkBooleanResult_t toggleStatus = Network::power('1', Network::PowerState::TOGGLE);
+			break;
+		}
+
+		case UserInput::ButtonPress::PRESS_LONG: {
+			StatusLight::setColor(0x000022);
+			Power::delay(3000);
+
+			Network::power('0', Network::PowerState::OFF);
+
+			break;
+		}
+
+		default:
+			break;
+	}
+	if (UserInput::buttonPress != UserInput::ButtonPress::PRESS_NONE) {
+		UserInput::buttonPress = UserInput::ButtonPress::PRESS_NONE; // reset button press state
+		clearLight = true;
 	}
 
 	if (UserInput::dimmerDelta != 0) {
-		StatusLight::setColor(false, false, false);
+		clearLight = true;
+
 		int32_t delta = UserInput::dimmerDelta;
 		String sign = (delta > 0) ? "%2b" : "%2d";
 		String cmnd = "dimmer2" + sign + String(abs(delta));
@@ -54,11 +85,10 @@ void loop() {
 	}
 
 	// clear status light
-	if (StatusLight::isOn) {
-		// todo: test for crash?
-		Power::delay(30);
-
-		StatusLight::setColor(false, false, false); // off
+	if (clearLight) {
+		clearLight = false;
+		Power::delay(50);
+		StatusLight::setColor(0);
 	}
 
 	if (sleepFlag) {

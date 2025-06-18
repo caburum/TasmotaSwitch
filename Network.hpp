@@ -45,14 +45,14 @@ namespace Network {
 		}
 	}
 
-	String sendCmnd(const char* cmnd) {
+	String sendCmnd(String cmnd) {
 		connectWifi();
 		String response;
 		if (WiFi.status() == WL_CONNECTED) {
 			String serverPath = URL_CMND + cmnd;
 
 			HTTPClient http;
-			http.begin(client, serverPath.c_str());
+			http.begin(client, serverPath);
 
 			int httpResponseCode = http.GET();
 
@@ -73,17 +73,25 @@ namespace Network {
 		return response;
 	}
 
-	networkBooleanResult_t power2(boolean toggle = false) {
-		String response = sendCmnd(toggle ? "power2+toggle" : "POWER2");
+	namespace PowerState {
+		static const String ON = String("ON");
+		static const String OFF = String("OFF");
+		static const String TOGGLE = String("TOGGLE");
+	}
+
+	networkBooleanResult_t power(char channel, String powerState) {
+		String identifier = "POWER" + String(channel);
+
+		String response = sendCmnd(identifier + "+" + powerState);
 		JSONVar json = JSON.parse(response);
 		if (JSON.typeof(json) == "undefined") {
 			Serial.println("json parse failed");
 			return NETWORK_ERROR;
 		}
-		if (json.hasOwnProperty("POWER2")) {
-			return json.hasPropertyEqual("POWER2", "ON") ? NETWORK_ON : NETWORK_OFF;
+		if (json.hasOwnProperty(identifier)) {
+			return json.hasPropertyEqual(identifier, PowerState::ON) ? NETWORK_ON : NETWORK_OFF;
 		}
-		return NETWORK_ERROR;
+		return NETWORK_ERROR; // todo: don't return for channel 0
 	}
 }
 

@@ -3,7 +3,6 @@
 
 #include "Network.hpp"
 #include "StatusLight.hpp"
-#include "Storage.hpp"
 #include "config.h"
 
 #define PIN_SW D4
@@ -15,34 +14,44 @@
 #define ENCODER_TARGET_STEP_FAST 8
 
 namespace UserInput {
-	volatile bool toggleScheduledFlag = false;
-	volatile int32_t dimmerDelta = 0;
-	volatile unsigned long lastInteractionTime = millis();
+	enum ButtonPress {
+		PRESS_NONE = 0,
+		PRESS_SHORT = 50, // debounce
+		PRESS_MEDIUM = 300,
+		PRESS_LONG = 600
+	};
 
-	IRAM_ATTR void toggleButtonInterrupt() {
-		// https://forum.arduino.cc/t/45110
-		static unsigned long lastTime = 0;
-		unsigned long currentTime = millis();
+	volatile ButtonPress buttonPress = PRESS_NONE;
+	volatile int32_t dimmerDelta = 0;
+	volatile unsigned long lastInteractionTime = millis(); // for eco mode
+
+	volatile unsigned long _buttonDownTime = 0;
+	volatile bool _buttonIsDown = false;
+
+	IRAM_ATTR void updateButtonInterrupt() {
 		lastInteractionTime = millis();
-		// if interrupts come faster than 200ms, assume it's a bounce and ignore
-		if (currentTime - lastTime > 200) {
-			toggleScheduledFlag = true; // will be unset by main loop
-			Serial.println("toggleScheduledFlag: true");
-			StatusLight::setColor(false, false, true);
+
+		if (digitalRead(PIN_SW) == LOW) {
+			// pin went LOW, button was pressed
+			if (!_buttonIsDown) {
+				// prevent re-triggering if already down
+				_buttonDownTime = lastInteractionTime;
+				_buttonIsDown = true;
+			}
+		} else {
+			// pin went HIGH, button was released
+			_buttonIsDown = false;
 		}
-		lastTime = currentTime;
 	}
 
 	// https://garrysblog.com/2021/03/20/reliably-debouncing-rotary-encoders-with-arduino-and-esp32/
 	IRAM_ATTR void updateEncoderInterrupt() {
-		using namespace StorageData;
-
 		static uint8_t oldAB = 3; // lookup table index
 		static int8_t encval = 0; // encoder value
 		static const int8_t encStates[] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0}; // lookup table
 		static unsigned long lastTime = 0;
 		unsigned long currentTime = millis();
-		lastInteractionTime = millis();
+		lastInteractionTime = currentTime;
 
 		oldAB <<= 2; // Remember previous state
 
@@ -76,9 +85,9 @@ namespace UserInput {
 			return; // skip dealing with value
 		}
 
-		StatusLight::setColor(false, false, true);
+		StatusLight::setColor(0x111100);
 
-		dimmerDelta = constrain(dimmerDelta, -100, 100); // todo: fix overflow
+		dimmerDelta = constrain(dimmerDelta, -100, 100);
 
 		Serial.print("dimmerDelta: ");
 		Serial.println(dimmerDelta);
@@ -89,9 +98,43 @@ namespace UserInput {
 		pinMode(PIN_CLK, INPUT);
 		pinMode(PIN_DT, INPUT);
 
-		attachInterrupt(digitalPinToInterrupt(PIN_SW), toggleButtonInterrupt, RISING);
+		attachInterrupt(digitalPinToInterrupt(PIN_SW), updateButtonInterrupt, CHANGE);
 		attachInterrupt(digitalPinToInterrupt(PIN_CLK), updateEncoderInterrupt, CHANGE);
 		attachInterrupt(digitalPinToInterrupt(PIN_DT), updateEncoderInterrupt, CHANGE);
+	}
+
+	inline void loop() {
+		static bool pressInProgress = false;
+		static ButtonPress workingState = ButtonPress::PRESS_NONE;
+
+		if (buttonPress != ButtonPress::PRESS_NONE) {
+			// already pending
+		} else if (_buttonIsDown) {
+			if (!pressInProgress) {
+				pressInProgress = true;
+				workingState = ButtonPress::PRESS_NONE;
+			}
+
+			unsigned long heldDuration = millis() - _buttonDownTime;
+
+			if (heldDuration >= ButtonPress::PRESS_LONG && workingState < ButtonPress::PRESS_LONG) {
+				workingState = ButtonPress::PRESS_LONG;
+				StatusLight::setColor(0x888800); // indicates long press threshold
+			} else if (heldDuration >= ButtonPress::PRESS_MEDIUM && workingState < ButtonPress::PRESS_MEDIUM) {
+				workingState = ButtonPress::PRESS_MEDIUM;
+				StatusLight::setColor(0x444400); // indicates medium press threshold
+			} else if (heldDuration >= ButtonPress::PRESS_SHORT && workingState < ButtonPress::PRESS_SHORT) {
+				workingState = ButtonPress::PRESS_SHORT;
+				StatusLight::setColor(0x111100); // indicates short press threshold
+			}
+		} else if (pressInProgress) {
+			pressInProgress = false; // reset button state
+			buttonPress = workingState; // finalize the button press state
+
+			Serial.print("Button press detected: ");
+			Serial.println(static_cast<int>(buttonPress));
+			StatusLight::setColor(0); // turn off the status light
+		}
 	}
 }
 

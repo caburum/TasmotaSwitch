@@ -21,7 +21,14 @@ namespace UserInput {
 		PRESS_LONG = 600
 	};
 
+	enum EncoderMode {
+		OFF = 0,
+		PRIMARY = 2, // white
+		SECONDARY = 1, // color
+	};
+
 	volatile ButtonPress buttonPress = PRESS_NONE;
+	volatile EncoderMode encoderMode = EncoderMode::OFF;
 	volatile int32_t dimmerDelta = 0;
 	volatile unsigned long lastInteractionTime = millis(); // for eco mode
 
@@ -52,6 +59,10 @@ namespace UserInput {
 		static unsigned long lastTime = 0;
 		unsigned long currentTime = millis();
 		lastInteractionTime = currentTime;
+
+		if (encoderMode == EncoderMode::OFF) {
+			encoderMode = EncoderMode::PRIMARY;
+		}
 
 		oldAB <<= 2; // Remember previous state
 
@@ -88,9 +99,6 @@ namespace UserInput {
 		StatusLight::setColor(0x111100);
 
 		dimmerDelta = constrain(dimmerDelta, -100, 100);
-
-		Serial.print("dimmerDelta: ");
-		Serial.println(dimmerDelta);
 	}
 
 	inline void setup() {
@@ -117,7 +125,10 @@ namespace UserInput {
 
 			unsigned long heldDuration = millis() - _buttonDownTime;
 
-			if (heldDuration >= ButtonPress::PRESS_LONG && workingState < ButtonPress::PRESS_LONG) {
+			if (encoderMode > EncoderMode::OFF) {
+				workingState = ButtonPress::PRESS_NONE;
+				encoderMode = EncoderMode::SECONDARY;
+			} else if (heldDuration >= ButtonPress::PRESS_LONG && workingState < ButtonPress::PRESS_LONG) {
 				workingState = ButtonPress::PRESS_LONG;
 				StatusLight::setColor(0x888800); // indicates long press threshold
 			} else if (heldDuration >= ButtonPress::PRESS_MEDIUM && workingState < ButtonPress::PRESS_MEDIUM) {
@@ -131,7 +142,10 @@ namespace UserInput {
 			pressInProgress = false; // reset button state
 			buttonPress = workingState; // finalize the button press state
 
-			Serial.print("Button press detected: ");
+			encoderMode = EncoderMode::OFF; // reset when button is released
+			dimmerDelta = 0; // reset dimmer delta
+
+			Serial.print("button press detected: ");
 			Serial.println(static_cast<int>(buttonPress));
 			StatusLight::setColor(0); // turn off the status light
 		}

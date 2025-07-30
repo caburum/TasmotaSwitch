@@ -24,7 +24,7 @@ namespace Network {
 			WiFi.mode(WIFI_STA);
 			WiFi.begin(WIFI_SSID, WIFI_PASSPHRASE);
 			WiFi.persistent(true);
-			WiFi.setHostname("tasmota-switch");
+			WiFi.setHostname(("tasmota-switch-" + String(ESP.getChipId(), HEX)).c_str());
 			WiFi.setAutoReconnect(true);
 
 			Serial.print("wifi connecting");

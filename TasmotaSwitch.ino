@@ -29,6 +29,30 @@ void loop() {
 
 	UserInput::loop();
 
+	if (UserInput::buttonPress != UserInput::ButtonPress::PRESS_NONE || UserInput::dimmerDelta != 0) {
+		Serial.print("buttonPress: ");
+		Serial.print(UserInput::buttonPress);
+		Serial.print(" encoderMode: ");
+		Serial.print(UserInput::encoderMode);
+		Serial.print(" dimmerDelta: ");
+		Serial.println(UserInput::dimmerDelta);
+	}
+
+	if (UserInput::dimmerDelta != 0 && UserInput::encoderMode != UserInput::EncoderMode::OFF) {
+		clearLight = true;
+
+		int32_t delta = UserInput::dimmerDelta;
+		String id = UserInput::encoderMode == UserInput::EncoderMode::SECONDARY ? "1" : "2";
+		if (UserInput::encoderMode == UserInput::EncoderMode::PRIMARY)
+			UserInput::encoderMode = UserInput::EncoderMode::OFF; // only when not conflicting with button
+		String sign = (delta > 0) ? "%2b" : "%2d";
+		String cmnd = "dimmer" + id + sign + String(abs(delta));
+		Serial.print("sending dimmer command: ");
+		Serial.println(cmnd);
+		Network::sendCmnd(cmnd.c_str());
+		UserInput::dimmerDelta -= delta;
+	}
+
 	switch (UserInput::buttonPress) {
 		case UserInput::ButtonPress::PRESS_SHORT: {
 			networkBooleanResult_t toggleStatus = Network::power('2', Network::PowerState::TOGGLE);
@@ -63,18 +87,6 @@ void loop() {
 	if (UserInput::buttonPress != UserInput::ButtonPress::PRESS_NONE) {
 		UserInput::buttonPress = UserInput::ButtonPress::PRESS_NONE; // reset button press state
 		clearLight = true;
-	}
-
-	if (UserInput::dimmerDelta != 0) {
-		clearLight = true;
-
-		int32_t delta = UserInput::dimmerDelta;
-		String sign = (delta > 0) ? "%2b" : "%2d";
-		String cmnd = "dimmer2" + sign + String(abs(delta));
-		Serial.print("sending dimmer command: ");
-		Serial.println(cmnd);
-		Network::sendCmnd(cmnd.c_str());
-		UserInput::dimmerDelta -= delta;
 	}
 
 	// if no input for a while, go to light sleep
